@@ -266,6 +266,7 @@ async def create_account(
         user_id=user_id,
         workspace_id=workspace_id,
         name=data.name,
+        order=data.order,
         type=data.type,
         balance=data.balance,
         currency=data.currency,
@@ -327,6 +328,7 @@ async def update_account(
     if account.connection_id is not None:
         editable_fields = {
             "display_name",
+            "order",
             "type",
             "credit_limit",
             "statement_close_day",
@@ -340,7 +342,7 @@ async def update_account(
             raise ValueError("Cannot edit bank-connected accounts")
         old_type = account.type
         new_type = update_data.get("type", account.type)
-        cc_fields = editable_fields - {"display_name", "type"}
+        cc_fields = editable_fields - {"display_name", "type", "order"}
         cc_update = {k: v for k, v in update_data.items() if k in cc_fields}
         if cc_update and new_type != "credit_card":
             raise ValueError("Credit card fields can only be set on credit card accounts")
