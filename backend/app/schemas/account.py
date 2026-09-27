@@ -40,7 +40,7 @@ class AccountUpdate(BaseModel):
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None
-    order: Optional[int] = Field(default=None, ge=0)
+    order: int = Field(default=0, ge=0)
 
 
 class AccountRead(AccountBase):

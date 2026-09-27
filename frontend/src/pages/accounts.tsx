@@ -668,6 +668,7 @@ function AccountDialog({
   onSave: (data: {
     name?: string
     display_name?: string | null
+    order?: number
     type?: string
     balance?: number
     balance_date?: string
