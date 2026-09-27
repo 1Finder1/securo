@@ -165,7 +165,7 @@ export default function AccountsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; type: string; balance?: number; currency?: string }) =>
+    mutationFn: (data: { name: string; type: string; balance?: number; currency?: string, order: number }) =>
       accounts.create(data),
     onSuccess: () => {
       invalidateFinancialQueries(queryClient)
@@ -646,7 +646,7 @@ export default function AccountsPage() {
           if (editingAccount) {
             updateMutation.mutate({ id: editingAccount.id, ...data })
           } else {
-            createMutation.mutate(data as { name: string; type: string; balance?: number; balance_date?: string; currency?: string })
+            createMutation.mutate(data as { name: string; type: string; balance?: number; balance_date?: string; currency?: string, order: number })
           }
         }}
         loading={createMutation.isPending || updateMutation.isPending}
