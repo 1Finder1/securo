@@ -734,7 +734,7 @@ function AccountDialog({
               ...(!isConnected && { name, balance: parseFloat(balance), balance_date: balanceDate, currency }),
               type,
               display_name: displayName.trim() || null,
-              order,
+              order: order || '0',
               ...(isCC && {
                 credit_limit: creditLimit !== '' ? parseFloat(creditLimit) : null,
                 statement_close_day: parseDay(statementCloseDay),
@@ -826,16 +826,6 @@ function AccountDialog({
                   />
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>{t('accounts.order')}</Label>
-                <Input
-                  type="number"
-                  step="1"
-                  min={0}
-                  value={order}
-                  onChange={(e) => setOrder(e.target.value)}
-                />
-              </div>
               {type === 'credit_card' && (
                 <p className="text-xs text-muted-foreground -mt-2">
                   {t('accounts.balanceCreditCardHint')}
@@ -843,6 +833,16 @@ function AccountDialog({
               )}
             </>
           )}
+          <div className="space-y-2">
+            <Label>{t('accounts.order')}</Label>
+            <Input
+              type="number"
+              step="1"
+              min={0}
+              value={order}
+              onChange={(e) => setOrder(e.target.value)}
+            />
+          </div>
           {type === 'credit_card' && (
             <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-4">
               <div className="space-y-2">
