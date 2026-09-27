@@ -734,7 +734,7 @@ function AccountDialog({
               ...(!isConnected && { name, balance: parseFloat(balance), balance_date: balanceDate, currency }),
               type,
               display_name: displayName.trim() || null,
-              order: order || '0',
+              order: +(order || '0'),
               ...(isCC && {
                 credit_limit: creditLimit !== '' ? parseFloat(creditLimit) : null,
                 statement_close_day: parseDay(statementCloseDay),
