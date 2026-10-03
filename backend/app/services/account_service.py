@@ -12,7 +12,7 @@ from app.models.account import Account
 from app.models.bank_connection import BankConnection
 from app.models.credit_card_bill import CreditCardBill
 from app.models.transaction import Transaction
-from app.schemas.account import AccountCreate, AccountUpdate
+from app.schemas.account import AccountCreate, AccountOrdering, AccountUpdate
 from app.services._query_filters import (
     counts_as_pnl,
     counts_in_current_balance,
@@ -253,6 +253,32 @@ async def get_account(session: AsyncSession, account_id: uuid.UUID, workspace_id
         )
     )
     return result.scalar_one_or_none()
+
+
+async def bulk_order_accounts(
+    session: AsyncSession, workspace_id: uuid.UUID, ordering: list[AccountOrdering],
+) -> None:
+    ids = [item.account_id for item in ordering]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Duplicate account_id")
+    if not ids:
+        return
+
+    result = await session.execute(
+        select(Account)
+        .outerjoin(BankConnection)
+        .where(
+            Account.id.in_(ids),
+            or_(Account.workspace_id == workspace_id, BankConnection.workspace_id == workspace_id),
+        )
+    )
+    owned = {account.id: account for account in result.scalars().all()}
+    if len(owned) != len(ids):
+        raise LookupError("Account not found")
+
+    for item in ordering:
+        owned[item.account_id].order = item.order
+    await session.commit()
 
 
 async def create_account(

@@ -469,6 +469,9 @@ export const accounts = {
     const { data } = await api.patch(`/accounts/${id}`, account)
     return data
   },
+  bulkOrdering: async (ordering: { account_id: string; order: number }[]): Promise<void> => {
+    await api.patch('/accounts/bulk_ordering', ordering)
+  },
   delete: async (id: string): Promise<void> => {
     await api.delete(`/accounts/${id}`)
   },

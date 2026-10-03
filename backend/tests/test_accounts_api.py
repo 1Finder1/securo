@@ -1,7 +1,78 @@
 import pytest
+import uuid
 from httpx import AsyncClient
 
 from app.models.account import Account
+
+
+@pytest.mark.asyncio
+async def test_bulk_ordering_updates_all_accounts_in_one_request(
+    client: AsyncClient, auth_headers, test_account: Account,
+):
+    manual = await client.post(
+        "/api/accounts", headers=auth_headers,
+        json={"name": "Manual", "type": "checking"},
+    )
+    assert manual.status_code == 201
+    manual_id = manual.json()["id"]
+    response = await client.patch(
+        "/api/accounts/bulk_ordering", headers=auth_headers,
+        json=[
+            {"account_id": manual_id, "order": 0},
+            {"account_id": str(test_account.id), "order": 1},
+        ],
+    )
+    assert response.status_code == 204
+    accounts = (await client.get("/api/accounts", headers=auth_headers)).json()
+    assert [(item["id"], item["order"]) for item in accounts] == [
+        (manual_id, 0), (str(test_account.id), 1),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bulk_ordering_invalid_batch_leaves_all_orders_unchanged(
+    client: AsyncClient, auth_headers, test_account: Account,
+):
+    response = await client.patch(
+        "/api/accounts/bulk_ordering", headers=auth_headers,
+        json=[
+            {"account_id": str(test_account.id), "order": 7},
+            {"account_id": str(uuid.uuid4()), "order": 8},
+        ],
+    )
+    assert response.status_code == 404
+    account = (await client.get(f"/api/accounts/{test_account.id}", headers=auth_headers)).json()
+    assert account["order"] == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_ordering_rejects_duplicates_and_invalid_order(
+    client: AsyncClient, auth_headers, test_account: Account,
+):
+    id = str(test_account.id)
+    duplicate = await client.patch(
+        "/api/accounts/bulk_ordering", headers=auth_headers,
+        json=[{"account_id": id, "order": 1}, {"account_id": id, "order": 2}],
+    )
+    assert duplicate.status_code == 400
+    invalid = await client.patch(
+        "/api/accounts/bulk_ordering", headers=auth_headers,
+        json=[{"account_id": id, "order": -1}],
+    )
+    assert invalid.status_code == 422
+    account = (await client.get(f"/api/accounts/{id}", headers=auth_headers)).json()
+    assert account["order"] == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_ordering_requires_write_access(
+    client: AsyncClient, viewer_auth_headers, test_account: Account,
+):
+    response = await client.patch(
+        "/api/accounts/bulk_ordering", headers=viewer_auth_headers,
+        json=[{"account_id": str(test_account.id), "order": 1}],
+    )
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio

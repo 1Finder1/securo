@@ -43,6 +43,11 @@ class AccountUpdate(BaseModel):
     order: int = Field(default=0, ge=0)
 
 
+class AccountOrdering(BaseModel):
+    account_id: uuid.UUID
+    order: int = Field(ge=0)
+
+
 class AccountRead(AccountBase):
     id: uuid.UUID
     user_id: uuid.UUID

@@ -1179,6 +1179,7 @@
     "addManual": "Добавить счёт",
     "editAccount": "Редактировать счёт",
     "manualAccounts": "Ручные счета",
+    "accountOrder": "Порядок счетов",
     "bankConnections": "Подключения банков",
     "noManualAccounts": "Пока нет ручных счетов",
     "noBankConnections": "Нет подключений к банкам",

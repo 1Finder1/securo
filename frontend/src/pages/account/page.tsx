@@ -27,6 +27,7 @@ import { RefreshCw, TriangleAlert, Unlink, Settings } from 'lucide-react'
 import { ConnectionLogo } from '@/components/account-icon'
 import { AccountPageActions } from '@/components/account-page-actions'
 import AccountSection from './account_section'
+import AccountSectionDnd from './account_section_dnd'
 import { PageHeader } from '@/components/page-header'
 import { BankConnectDialog } from '@/components/bank-connect-dialog'
 import { ConnectorSelectDialog, type Provider } from '@/components/connector-select-dialog'
@@ -339,6 +340,8 @@ export default function AccountsPage() {
               <p className="text-sm text-muted-foreground">{t('accounts.noBankConnections')}</p>
             </div>
           )}
+
+          <AccountSectionDnd accounts={accountsList ?? []} />
 
           {/* Closed Accounts */}
           {closedAccounts.length > 0 && (

@@ -1166,6 +1166,7 @@
     "addManual": "Add Account",
     "editAccount": "Edit Account",
     "manualAccounts": "Manual Accounts",
+    "accountOrder": "Account Order",
     "bankConnections": "Bank Connections",
     "noManualAccounts": "No manual accounts yet",
     "noBankConnections": "No bank connections",
