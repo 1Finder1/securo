@@ -48,10 +48,10 @@ async def test_update_connected_account_order(
 
 
 @pytest.mark.asyncio
-async def test_list_accounts_sorts_by_order_then_name(
+async def test_list_accounts_sorts_by_order_then_display_name(
     client: AsyncClient, auth_headers, test_account: Account
 ):
-    # Default order remains zero; tied accounts sort by name.
+    # Default order remains zero; tied accounts sort by visible name.
     assert test_account.order == 0
 
     alpha = await client.post(
@@ -64,10 +64,16 @@ async def test_list_accounts_sorts_by_order_then_name(
     )
     assert alpha.status_code == zulu.status_code == 201
 
+    renamed = await client.patch(
+        f"/api/accounts/{test_account.id}", headers=auth_headers,
+        json={"order": 2, "display_name": "Bills"},
+    )
+    assert renamed.status_code == 200
+
     response = await client.get("/api/accounts", headers=auth_headers)
     assert response.status_code == 200
-    assert [(item["name"], item["order"]) for item in response.json()] == [
-        (test_account.name, 0), ("Alpha", 2), ("Zulu", 2),
+    assert [(item["name"], item["display_name"], item["order"]) for item in response.json()] == [
+        ("Alpha", None, 2), (test_account.name, "Bills", 2), ("Zulu", None, 2),
     ]
 
 

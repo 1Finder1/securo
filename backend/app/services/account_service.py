@@ -127,7 +127,7 @@ async def get_accounts(session: AsyncSession, workspace_id: uuid.UUID, include_c
     )
     if not include_closed:
         query = query.where(Account.is_closed == False)
-    query = query.order_by(Account.order, Account.name)
+    query = query.order_by(Account.order, func.coalesce(Account.display_name, Account.name))
     result = await session.execute(query)
     return [
             serialize_account(acc, current_balance, previous_balance, connection)
