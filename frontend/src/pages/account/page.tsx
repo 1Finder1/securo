@@ -66,7 +66,7 @@ export default function AccountsPage() {
   const [reconnectItemId, setReconnectItemId] = useState<string | null>(null)
   const [tokenReconnectConnection, setTokenReconnectConnection] = useState<BankConnection | null>(null)
 
-  const { data: accountsList, isLoading: accountsLoading } = useQuery({
+  const { data: accountsList, isLoading: accountsLoading, isError: accountsError } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accounts.list(),
   })
@@ -341,7 +341,7 @@ export default function AccountsPage() {
             </div>
           )}
 
-          <AccountSectionDnd accounts={accountsList ?? []} />
+          {!accountsError && accountsList && <AccountSectionDnd accounts={accountsList} />}
 
           {/* Closed Accounts */}
           {closedAccounts.length > 0 && (
