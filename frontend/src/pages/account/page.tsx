@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
-import { formatAccountMask, getAccountLabel, getAccountName } from '@/lib/account-utils'
 import { getConnectionName } from '@/lib/connection-utils'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
+import { useDateLocale } from '@/hooks/use-display-locale'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { accounts, connections, currencies } from '@/lib/api'
@@ -25,20 +24,17 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { Account, BankConnection } from '@/types'
 import { RefreshCw, TriangleAlert, Unlink, Settings } from 'lucide-react'
-import { AccountIcon, ConnectionLogo } from '@/components/account-icon'
-import { getAccountTypeConfig } from '@/lib/account-type-config'
+import { ConnectionLogo } from '@/components/account-icon'
 import { AccountPageActions } from '@/components/account-page-actions'
-import { AccountRowActions } from '@/components/account-row-actions'
+import AccountSection from './account_section'
 import { PageHeader } from '@/components/page-header'
 import { BankConnectDialog } from '@/components/bank-connect-dialog'
 import { ConnectorSelectDialog, type Provider } from '@/components/connector-select-dialog'
 import { OAuthConnectDialog } from '@/components/oauth-connect-dialog'
 import { TokenConnectDialog } from '@/components/token-connect-dialog'
 import { ConnectionSettingsDialog } from '@/components/connection-settings-dialog'
-import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useWorkspace } from '@/contexts/workspace-context'
-import { formatCurrency } from '@/lib/format'
 
 // Account types offered in the create/edit dialog. Shared between the manual
 // type selector and the connected-account override selector so the list stays
@@ -51,23 +47,11 @@ const ACCOUNT_TYPE_OPTIONS = [
   { value: 'wallet', labelKey: 'accounts.typeWallet' },
 ] as const
 
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null
-  const due = new Date(dateStr + 'T00:00:00')
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-}
-
 export default function AccountsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const locale = useDisplayLocale()
   const dateLocale = useDateLocale()
-  const { mask } = usePrivacyMode()
-  const { user } = useAuth()
   const { canWrite } = useWorkspace()
-  const userCurrency = user?.preferences?.currency_display ?? 'USD'
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
@@ -243,71 +227,16 @@ export default function AccountsPage() {
       ) : (
         <div className="space-y-6">
           {/* Manual Accounts */}
-          <div className="bg-card rounded-xl border border-border shadow-sm">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-              <h2 className="text-sm font-medium text-muted-foreground">{t('accounts.manualAccounts')}</h2>
-            </div>
-            {manualAccounts.length > 0 ? (
-              <div className="divide-y divide-muted">
-                {manualAccounts.map((acc) => {
-                  const cfg = getAccountTypeConfig(acc.type)
-                  const bal = Number(acc.current_balance)
-                  const isCC = acc.type === 'credit_card'
-                  const dueIn = isCC ? daysUntil(acc.next_due_date) : null
-                  const dueText =
-                    dueIn == null ? null
-                      : dueIn < 0 ? t('accounts.overdue')
-                      : dueIn === 0 ? t('accounts.dueToday')
-                      : t('accounts.dueIn', { count: dueIn })
-                  const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
-                  const accountMask = formatAccountMask(acc)
-                  return (
-                    <div key={acc.id} className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
-                      <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                        <AccountIcon account={acc} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {t(cfg.label)}
-                            {accountMask && <> · <span className="tabular-nums">{accountMask}</span></>}
-                            {acc.shared_balance_group && <> · <span>{t('accounts.sharedCreditBalance')}</span></>}
-                            {dueText && <> · <span className={dueClass}>{dueText}</span></>}
-                          </p>
-                        </div>
-                      </Link>
-                      <div className="shrink-0 text-right">
-                        <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(acc.type === 'credit_card' ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
-                          {mask(formatCurrency(bal, acc.currency, locale))}
-                        </p>
-                        {isCC && acc.available_credit != null ? (
-                          <p className="text-[10px] text-muted-foreground tabular-nums">
-                            {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
-                          </p>
-                        ) : acc.balance_primary != null && acc.currency !== userCurrency && (
-                          <p className="text-[10px] text-muted-foreground tabular-nums">
-                            {mask(formatCurrency(acc.balance_primary, userCurrency, locale))}
-                          </p>
-                        )}
-                      </div>
-                      {canWrite && (
-                        <AccountRowActions
-                          accountName={getAccountName(acc)}
-                          onEdit={() => { setEditingAccount(acc); setDialogOpen(true) }}
-                          onClose={() => setClosingAccountId(acc.id)}
-                          onDelete={() => setDeletingId(acc.id)}
-                          deletePending={deleteMutation.isPending}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="px-5 py-8 text-center">
-                <p className="text-sm text-muted-foreground">{t('accounts.noManualAccounts')}</p>
-              </div>
-            )}
-          </div>
+          <AccountSection
+            title={t('accounts.manualAccounts')}
+            accounts={manualAccounts}
+            onEdit={(acc) => { setEditingAccount(acc); setDialogOpen(true) }}
+            onClose={(acc) => setClosingAccountId(acc.id)}
+            onDelete={(acc) => setDeletingId(acc.id)}
+            deletePending={deleteMutation.isPending}
+            emptyMessage={t('accounts.noManualAccounts')}
+            centeredEmpty
+          />
 
           {/* Bank Connections */}
           {connectionsList && connectionsList.length > 0 ? (
@@ -317,38 +246,44 @@ export default function AccountsPage() {
                 const needsReconnect = conn.status !== 'active'
                 const syncPending = syncMutation.isPending && syncMutation.variables === conn.id
                 return (
-                  <div key={conn.id} className="bg-card rounded-xl border border-border shadow-sm">
-                    {/* Connection header */}
-                    <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-                      <div className="flex items-center gap-3">
-                        {/* One bank's favicon would misrepresent a multi-
-                            institution link — fall back to the generic icon. */}
-                        <ConnectionLogo
-                          logoUrl={(conn.institutions?.length ?? 0) > 1 ? null : conn.logo_url}
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold text-foreground">{getConnectionName(conn, t)}</p>
-                            <Badge
-                              variant={conn.status === 'active' ? 'default' : 'secondary'}
-                              className={
-                                conn.status === 'active'
-                                  ? 'text-[10px] px-1.5 py-0 h-4'
-                                  : 'text-[10px] px-1.5 py-0 h-4 border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                              }
-                            >
-                              {t(`accounts.connectionStatus.${conn.status}`, conn.status)}
-                            </Badge>
+                  <AccountSection
+                    key={conn.id}
+                    accounts={connAccounts}
+                    onEdit={(acc) => { setEditingAccount(acc); setDialogOpen(true) }}
+                    onClose={(acc) => setClosingAccountId(acc.id)}
+                    deletePending={deleteMutation.isPending}
+                    emptyMessage={t('accounts.noAccountsFound')}
+                    header={
+                      <>
+                        <div className="flex items-center gap-3">
+                          {/* One bank's favicon would misrepresent a multi-
+                              institution link — fall back to the generic icon. */}
+                          <ConnectionLogo
+                            logoUrl={(conn.institutions?.length ?? 0) > 1 ? null : conn.logo_url}
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground">{getConnectionName(conn, t)}</p>
+                              <Badge
+                                variant={conn.status === 'active' ? 'default' : 'secondary'}
+                                className={
+                                  conn.status === 'active'
+                                    ? 'text-[10px] px-1.5 py-0 h-4'
+                                    : 'text-[10px] px-1.5 py-0 h-4 border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                }
+                              >
+                                {t(`accounts.connectionStatus.${conn.status}`, conn.status)}
+                              </Badge>
+                            </div>
+                            {conn.last_sync_at && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5">
+                                {t('accounts.lastSync')}: {new Date(conn.last_sync_at).toLocaleString(dateLocale)}
+                              </p>
+                            )}
                           </div>
-                          {conn.last_sync_at && (
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              {t('accounts.lastSync')}: {new Date(conn.last_sync_at).toLocaleString(dateLocale)}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                      {canWrite && (
-                        <div className="flex items-center gap-1.5">
+                        {canWrite && (
+                          <div className="flex items-center gap-1.5">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -391,70 +326,11 @@ export default function AccountsPage() {
                           >
                             <Unlink size={14} />
                           </Button>
-                        </div>
-                      )}
-                    </div>
-                    {/* Accounts list */}
-                    {connAccounts.length > 0 ? (
-                      <div className="divide-y divide-muted">
-                        {connAccounts.map((acc) => {
-                          const cfg = getAccountTypeConfig(acc.type)
-                          const bal = Number(acc.current_balance)
-                          const isCC = acc.type === 'credit_card'
-                          const dueIn = isCC ? daysUntil(acc.next_due_date) : null
-                          const dueText =
-                            dueIn == null ? null
-                              : dueIn < 0 ? t('accounts.overdue')
-                              : dueIn === 0 ? t('accounts.dueToday')
-                              : t('accounts.dueIn', { count: dueIn })
-                          const dueClass = dueIn != null && dueIn <= 3 ? 'text-amber-600' : 'text-muted-foreground'
-                          const accountMask = formatAccountMask(acc)
-                          return (
-                            <div key={acc.id} className="group flex items-center px-5 py-3 hover:bg-muted/50 transition-colors">
-                              <Link to={`/accounts/${acc.id}`} className="flex items-center gap-3 flex-1 min-w-0">
-                                <AccountIcon account={acc} />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-foreground truncate">{getAccountName(acc)}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {t(cfg.label)}
-                                    {accountMask && <> · <span className="tabular-nums">{accountMask}</span></>}
-                                    {acc.shared_balance_group && <> · <span>{t('accounts.sharedCreditBalance')}</span></>}
-                                    {dueText && <> · <span className={dueClass}>{dueText}</span></>}
-                                  </p>
-                                </div>
-                              </Link>
-                              <div className="shrink-0 text-right">
-                                <p className={`text-xs sm:text-sm font-semibold tabular-nums ${(acc.type === 'credit_card' ? bal > 0 : bal < 0) ? 'text-rose-500' : 'text-foreground'}`}>
-                                  {mask(formatCurrency(bal, acc.currency, locale))}
-                                </p>
-                                {isCC && acc.available_credit != null ? (
-                                  <p className="text-[10px] text-muted-foreground tabular-nums">
-                                    {t('accounts.availableCredit')}: {mask(formatCurrency(Number(acc.available_credit), acc.currency, locale))}
-                                  </p>
-                                ) : acc.balance_primary != null && acc.currency !== userCurrency && (
-                                  <p className="text-[10px] text-muted-foreground tabular-nums">
-                                    {mask(formatCurrency(acc.balance_primary, userCurrency, locale))}
-                                  </p>
-                                )}
-                              </div>
-                              {canWrite && (
-                                <AccountRowActions
-                                  accountName={getAccountName(acc)}
-                                  onEdit={() => { setEditingAccount(acc); setDialogOpen(true) }}
-                                  onClose={() => setClosingAccountId(acc.id)}
-                                  deletePending={deleteMutation.isPending}
-                                />
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <div className="px-5 py-4">
-                        <p className="text-sm text-muted-foreground">{t('accounts.noAccountsFound')}</p>
-                      </div>
-                    )}
-                  </div>
+                          </div>
+                        )}
+                      </>
+                    }
+                  />
                 )
               })}
             </div>
@@ -466,37 +342,13 @@ export default function AccountsPage() {
 
           {/* Closed Accounts */}
           {closedAccounts.length > 0 && (
-            <div className="bg-card rounded-xl border border-border shadow-sm opacity-60">
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
-                <h2 className="text-sm font-medium text-muted-foreground">{t('accounts.closedAccounts')}</h2>
-              </div>
-              <div className="divide-y divide-muted">
-                {closedAccounts.map((acc) => {
-                  return (
-                    <div key={acc.id} className="flex items-center px-5 py-3">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <AccountIcon account={acc} />
-                        <p className="text-sm font-medium text-muted-foreground truncate">{getAccountLabel(acc)}</p>
-                      </div>
-                      {canWrite && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-muted-foreground hover:text-foreground h-7 px-2 mr-3"
-                          onClick={() => reopenMutation.mutate(acc.id)}
-                          disabled={reopenMutation.isPending}
-                        >
-                          {t('accounts.reopen')}
-                        </Button>
-                      )}
-                      <p className="text-sm font-semibold tabular-nums text-muted-foreground w-32 text-right">
-                        {mask(formatCurrency(Number(acc.current_balance), acc.currency, locale))}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            <AccountSection
+              variant="closed"
+              title={t('accounts.closedAccounts')}
+              accounts={closedAccounts}
+              onReopen={(acc) => reopenMutation.mutate(acc.id)}
+              reopenPending={reopenMutation.isPending}
+            />
           )}
         </div>
       )}
