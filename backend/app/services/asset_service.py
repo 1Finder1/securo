@@ -5,12 +5,13 @@ from decimal import Decimal
 from typing import Any, Optional, cast
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.app_clock import app_today
-from app.models.asset import Asset
+from app.models.account import Account
+from app.models.asset import LOAN_COLLATERAL_TYPES, Asset
 from app.models.asset_transaction import AssetTransaction
 from app.models.asset_value import AssetValue
 from app.models.user import User
@@ -21,6 +22,7 @@ from app.providers.market_price import (
     get_market_price_provider,
 )
 from app.schemas.asset import AssetCreate, AssetUpdate, AssetValueCreate, AssetRead, AssetValueRead
+from app.services.asset_group_service import ensure_group_in_workspace
 from app.services.fx_rate_service import convert, stamp_primary_amount
 
 logger = logging.getLogger(__name__)
@@ -426,6 +428,7 @@ async def create_asset(
     market_provider: Optional[MarketPriceProvider] = None,
 ) -> AssetRead:
     """Create an asset, optionally with an initial value."""
+    await ensure_group_in_workspace(session, data.group_id, workspace_id)
     # Market-priced path: fetch a live quote first so we can derive currency
     # and the initial value from the ticker. Validate up-front rather than
     # half-creating an asset and failing on a 5xx from Yahoo.
@@ -648,6 +651,8 @@ async def update_asset(
         return None
 
     update_data = data.model_dump(exclude_unset=True)
+    if "group_id" in update_data:
+        await ensure_group_in_workspace(session, update_data["group_id"], workspace_id)
     # Prevent changing valuation_method on existing assets
     update_data.pop("valuation_method", None)
 
@@ -665,6 +670,15 @@ async def update_asset(
 
     for key, value in update_data.items():
         setattr(asset, key, value)
+
+    # Only a property or a vehicle can secure a loan, so an asset that changes
+    # to another type releases its loans instead of leaving them linked to it.
+    if asset.type not in LOAN_COLLATERAL_TYPES:
+        await session.execute(
+            sa_update(Account)
+            .where(Account.secured_asset_id == asset.id)
+            .values(secured_asset_id=None)
+        )
 
     # Regenerate growth-rule values if requested
     if regenerate_growth and asset.valuation_method == "growth_rule":

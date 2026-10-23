@@ -23,6 +23,50 @@ export function sumAccountBalances(
 }
 
 /**
+ * The accounts total the sidebar shows. Loans are long-term debt that the
+ * net worth already counts, so they stay out of this money-on-hand total.
+ */
+export function sumAccountsTotal(
+  accounts: readonly Pick<Account, 'type' | 'balance_primary' | 'current_balance' | 'shared_balance_group'>[],
+): number {
+  return sumAccountBalances(accounts.filter((account) => account.type !== 'loan'))
+}
+
+/**
+ * Return a presentation-only copy ordered by the name users see.
+ * The input is never mutated, which keeps React Query's cached account list intact.
+ */
+export function sortAccountsByDisplayName<
+  T extends { name: string; display_name?: string | null },
+>(accounts: readonly T[]): T[] {
+  return [...accounts].sort((left, right) =>
+    getAccountName(left).localeCompare(getAccountName(right), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    }),
+  )
+}
+
+/**
+ * Return a presentation-only copy with the largest account balances first.
+ * Debt accounts participate by magnitude, matching the balance list in the
+ * sidebar, while invalid/missing balances sort as zero.
+ * Pass a selector to compare multi-currency accounts in a common currency.
+ */
+export function sortAccountsByAbsoluteBalance<
+  T extends { current_balance?: number | string | null },
+>(
+  accounts: readonly T[],
+  getBalance: (account: T) => number | string | null | undefined = (account) => account.current_balance,
+): T[] {
+  return [...accounts].sort((left, right) => {
+    const leftBalance = Number(getBalance(left)) || 0
+    const rightBalance = Number(getBalance(right)) || 0
+    return Math.abs(rightBalance) - Math.abs(leftBalance)
+  })
+}
+
+/**
  * The bank's identifier for an account, masked to its last 4 chars, e.g. "•••• 1234".
  *
  * Banks commonly report every account under the same label (often the holder's

@@ -15,6 +15,7 @@ import { flattenConditions, hasConditionGroups } from '@/lib/rule-conditions'
 import { cn, normalizeText } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { DescriptionInput } from '@/components/description-input'
 import { Label } from '@/components/ui/label'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -520,8 +521,8 @@ function TransactionForm({
   const formRef = useRef<HTMLFormElement>(null)
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
 
-  // Bank-synced descriptions are read-only and can be long; auto-grow the
-  // textarea so the full text is always visible (issue #256).
+  // Bank-synced descriptions can be long; auto-grow the textarea so the full
+  // text is always visible (issue #256).
   useEffect(() => {
     const el = descriptionRef.current
     if (!el) return
@@ -656,7 +657,14 @@ function TransactionForm({
 
   const triggerSubmit = (action: SaveAction) => {
     pendingActionRef.current = action
-    formRef.current?.requestSubmit()
+    try {
+      // The submit handler runs synchronously inside requestSubmit() and reads
+      // the action first. If validation blocks the submit, the handler never
+      // runs, so reset here or a later plain Save would reuse this action.
+      formRef.current?.requestSubmit()
+    } finally {
+      pendingActionRef.current = 'save'
+    }
   }
   const showSaveVariants = isCreating && !isSynced
 
@@ -803,6 +811,7 @@ function TransactionForm({
           : {}
         const txData = isSynced
           ? {
+              ...(description !== transaction?.description ? { description } : {}),
               category_id: categoryId || null,
               payee_id: payeeId || null,
               notes: notes.trim() || null,
@@ -833,13 +842,13 @@ function TransactionForm({
         const recurringData = isCreating && isRecurring
           ? { frequency, end_date: endDate || undefined }
           : undefined
-        const installmentData = isCreating && isInstallment && !isSynced
+        const installmentData = isCreating && isInstallment && !isSynced && parsedAmount != null
           ? buildInstallmentSeriesInput({
               accountId,
               categoryId,
               payeeId,
               description,
-              amount,
+              amount: parsedAmount,
               date,
               type,
               currency,
@@ -933,7 +942,7 @@ function TransactionForm({
         <div className="flex items-center gap-2 p-3 text-sm bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
           <span>{t('transactions.recurringInfo', {
             frequency: t(`recurring.${recurringMatch.frequency}`),
-            next: new Date(recurringMatch.next_occurrence).toLocaleDateString(dateLocale),
+            next: new Date(recurringMatch.next_occurrence + 'T00:00:00').toLocaleDateString(dateLocale),
           })}</span>
         </div>
       )}
@@ -958,24 +967,47 @@ function TransactionForm({
         {isSynced ? (
           <textarea
             ref={descriptionRef}
-            className="w-full border border-input rounded-md px-3 py-2 text-sm bg-muted/40 text-muted-foreground resize-none overflow-hidden cursor-default outline-none focus:outline-none focus-visible:outline-none"
+            className="w-full border border-input rounded-md px-3 py-2 text-sm bg-card dark:bg-input/30 shadow-xs resize-none overflow-hidden outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-ring/30 focus-visible:ring-[2px]"
             value={description}
-            readOnly
+            onChange={(e) => setDescription(e.target.value)}
+            // Descriptions are single-line; Enter saves like the Input does.
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                formRef.current?.requestSubmit()
+              }
+            }}
+            required
             rows={1}
           />
         ) : (
-          <Input
+          <DescriptionInput
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
+            // Prefill what was last filed under this description, without
+            // overwriting anything the user already chose (issue #1127).
+            onPick={(suggestion) => {
+              if (!categoryId && suggestion.category_id) setCategoryId(suggestion.category_id)
+              if (!payeeId && suggestion.payee_id) setPayeeId(suggestion.payee_id)
+            }}
             required
             className="bg-card"
           />
         )}
         {transaction?.original_description &&
-          transaction.original_description !== transaction.description && (
-            <p className="text-xs text-muted-foreground">
-              {t('transactions.originalDescription')}: {transaction.original_description}
-            </p>
+          transaction.original_description !== description && (
+            <div className="flex items-start justify-between gap-3 text-xs text-muted-foreground">
+              <p>
+                {t('transactions.originalDescription')}: {transaction.original_description}
+              </p>
+              <button
+                type="button"
+                onClick={() => setDescription(transaction.original_description ?? '')}
+                className="shrink-0 underline underline-offset-2 hover:text-foreground transition-colors cursor-pointer"
+              >
+                {t('transactions.restoreOriginalDescription')}
+              </button>
+            </div>
           )}
         {/* Rows that pre-date the original_description column have no
             provenance to show, so the raw payee stays the only hint at what
@@ -1154,6 +1186,7 @@ function TransactionForm({
               onChange={(e) => setAccountId(e.target.value)}
               required
             >
+              {!accountId && <option value="" disabled hidden>{t('transactions.createCounterpartSelectAccount')}</option>}
               {accounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>{getAccountLabel(acc)}</option>
               ))}

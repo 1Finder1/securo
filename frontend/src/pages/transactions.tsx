@@ -3,6 +3,7 @@ import { useRegisterPageChatContext } from '@/lib/page-chat-context'
 import { getAccountName } from '@/lib/account-utils'
 import { AccountIcon } from '@/components/account-icon'
 import { currentMonth, monthRange, monthFromRange } from '@/lib/month-utils'
+import { loadRange, saveRange } from '@/lib/remembered-range'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
@@ -45,11 +46,14 @@ import { CategoryIcon } from '@/components/category-icon'
 import { CategorySelect } from '@/components/category-select'
 import { TransactionDialog, type SaveAction, type TransactionSavePayload } from '@/components/transaction-dialog'
 import { extractApiError } from '@/lib/api-errors'
+import { refreshTransactionsView } from '@/lib/transactions-refresh'
 import { TransactionsColumnPicker } from '@/components/transactions-column-picker'
 import { TransactionsPageActions } from '@/components/transactions-page-actions'
 import { MobileBulkSelectionActions } from '@/components/mobile-bulk-selection-actions'
 import { type ColumnDef, type ColumnId, useTransactionsGridState } from '@/components/transactions-grid-columns'
 import { TransferDialog } from '@/components/transfer-dialog'
+import { useSidebarState } from '@/contexts/sidebar-state-context'
+import { cn } from '@/lib/utils'
 import { LinkTransferDialog } from '@/components/link-transfer-dialog'
 import { BulkAddToGroupDialog, type BulkAddToGroupSubmission } from '@/components/bulk-add-to-group-dialog'
 import { TransactionsFilterBar } from '@/components/transactions-filter-bar'
@@ -84,6 +88,7 @@ const HIDE_IGNORED_STORAGE_KEY = 'securo.transactions.hideIgnored'
 
 export default function TransactionsPage() {
   const { t, i18n } = useTranslation()
+  const { collapsed: sidebarCollapsed } = useSidebarState()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const locale = useDisplayLocale()
@@ -113,19 +118,21 @@ export default function TransactionsPage() {
     return initial ? [initial] : []
   })
   const [filterUncategorized, setFilterUncategorized] = useState<boolean>(false)
-  // Seed the date range from the URL, or default to the current month on first
-  // open (no ?from/?to). Done in the initializer so it survives effect re-runs
-  // (e.g. React StrictMode's double-invoke in development).
-  const [filterFrom, setFilterFrom] = useState<string>(() => {
+  // Seed the date range from the URL, else the range last used on this page
+  // (issue #1053), else the current month. Done in the initializer so it
+  // survives effect re-runs (e.g. React StrictMode's double-invoke in
+  // development).
+  const [initialRange] = useState(() => {
     const f = searchParams.get('from')
     const t = searchParams.get('to')
-    return f || t ? (f ?? '') : monthRange(currentMonth()).from
+    if (f || t) return { from: f ?? '', to: t ?? '' }
+    return loadRange('transactions') ?? monthRange(currentMonth())
   })
-  const [filterTo, setFilterTo] = useState<string>(() => {
-    const f = searchParams.get('from')
-    const t = searchParams.get('to')
-    return f || t ? (t ?? '') : monthRange(currentMonth()).to
-  })
+  const [filterFrom, setFilterFrom] = useState<string>(initialRange.from)
+  const [filterTo, setFilterTo] = useState<string>(initialRange.to)
+  useEffect(() => {
+    saveRange('transactions', filterFrom, filterTo)
+  }, [filterFrom, filterTo])
   // Month reflected by the stepper: the active range when it spans exactly one
   // full month, otherwise the current month (custom ranges still navigable).
   const steppedMonth = monthFromRange(filterFrom, filterTo) ?? currentMonth()
@@ -377,7 +384,7 @@ export default function TransactionsPage() {
   const noAccounts = filterAccountIds.length === 0
     && activeAccountIds !== null && activeAccountIds.length === 0
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['transactions', page, limit, effectiveAccountIds, filterCategoryIds, filterUncategorized, filterPayee, filterGroupId, filterType, filterStatus, filterFrom, filterTo, filterMinAmount, filterMaxAmount, hideIgnored, searchQuery, tagFilters, isMobile ? 'date' : grid.sortBy, isMobile ? 'desc' : grid.sortDir],
     enabled: !noAccounts,
     queryFn: () =>
@@ -406,7 +413,7 @@ export default function TransactionsPage() {
 
   const calendarMonth = steppedMonth
   const calendarAccountIds = filterAccountIds.length === 1 ? filterAccountIds : []
-  const { data: calendarData, isLoading: calendarLoading } = useQuery({
+  const { data: calendarData, isLoading: calendarLoading, isFetching: calendarFetching, refetch: refetchCalendar } = useQuery({
     queryKey: ['transactions', 'calendar', calendarMonth, calendarAccountIds],
     enabled: viewMode === 'calendar',
     queryFn: () => transactions.calendar({
@@ -1371,6 +1378,16 @@ export default function TransactionsPage() {
             onAdd={canWrite ? () => { setEditingTx(null); setDialogOpen(true) } : undefined}
             onDuplicate={duplicableTx ? () => handleDuplicateTransaction(duplicableTx) : undefined}
             onTransfer={canWrite ? () => setTransferDialogOpen(true) : undefined}
+            onRefresh={noAccounts ? undefined : () => {
+              void refreshTransactionsView({
+                viewMode,
+                refetchList: refetch,
+                refetchCalendar,
+                onError: (message) => toast.error(message),
+              })
+            }}
+            refreshing={viewMode === 'calendar' ? calendarFetching : isFetching}
+            testId="transactions-page-actions"
           />
         }
       />
@@ -1760,9 +1777,15 @@ export default function TransactionsPage() {
       {/* Bulk Action Bar — aligned with the main content area: clears the
           fixed sidebar on lg+ and matches the page's max-w-7xl + p-6 wrapper
           so the bar visually sits over the transactions list, not the
-          full viewport. */}
+          full viewport. The left offset follows the sidebar's real
+          collapsed state (240px expanded / 64px collapsed) so it stays
+          centered when the nav is collapsed (issue #1027). */}
       {viewMode === 'list' && selectedIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 lg:left-60 z-50">
+        <div className={cn(
+          "fixed bottom-0 left-0 right-0 z-50",
+          "transition-[left] duration-300 ease-in-out motion-reduce:transition-none",
+          sidebarCollapsed ? 'lg:left-16' : 'lg:left-60',
+        )}>
         <div className="mx-auto max-w-7xl px-3 md:px-6 pb-4 md:pb-6">
           <div className="flex items-stretch gap-1.5 bg-card border border-border shadow-xl rounded-2xl p-2">
             <MobileBulkSelectionActions
@@ -1793,7 +1816,7 @@ export default function TransactionsPage() {
               onClear={() => { setSelectedIds(new Set()); setBulkCategory(''); setBulkTagInput('') }}
             />
 
-            <div className="hidden w-full items-stretch gap-1.5 sm:flex">
+            <div className="hidden w-full items-center gap-1.5 sm:flex">
             {/* Selection count + net total — stacked vertically so the
                 sum (issue #185) adds no horizontal width to an already
                 crowded bar. The sum is hidden below sm where only the
