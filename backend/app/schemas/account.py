@@ -21,7 +21,7 @@ class AccountCreate(BaseModel):
     balance: Decimal = Decimal("0.00")
     balance_date: Optional[date] = None
     currency: str = "USD"
-    order: int = Field(default=0, ge=0)
+    order: int = Field(default=0, ge=0, le=2_147_483_647)
     secured_asset_id: Optional[uuid.UUID] = None
     credit_limit: Optional[Decimal] = None
     statement_close_day: Optional[int] = None
@@ -44,7 +44,7 @@ class AccountUpdate(BaseModel):
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None
-    order: int = Field(default=0, ge=0)
+    order: int = Field(default=0, ge=0, le=2_147_483_647)
 
 
 class AccountOrdering(BaseModel):
